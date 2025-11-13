@@ -44,6 +44,10 @@
             <i class="fa fa-money"></i>
             <span>Penghasilan</span>
           </div>
+          <div class="menu-item" onclick="showSection('feedback', this)">
+            <i class="fa fa-comments"></i>
+            <span>Feedback</span>
+          </div>
           <div class="menu-item" onclick="showSection('settings', this)">
             <i class="fa fa-cog"></i>
             <span>Pengaturan</span>
@@ -245,6 +249,72 @@
             </div>
           </section>
 
+          <!-- Feedback Section -->
+          <section class="dashboard-section" id="feedback">
+            <div class="table-container">
+              <h3>Semua Feedback</h3>
+              <div
+                class="feedback-filters"
+                style="
+                  margin-bottom: 20px;
+                  display: flex;
+                  gap: 10px;
+                  flex-wrap: wrap;
+                "
+              >
+                <select
+                  id="filter-course"
+                  style="
+                    padding: 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                    font-size: 14px;
+                  "
+                >
+                  <option value="">Semua Kursus</option>
+                </select>
+                <select
+                  id="filter-rating"
+                  style="
+                    padding: 10px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                    font-size: 14px;
+                  "
+                >
+                  <option value="">Semua Rating</option>
+                  <option value="5">★★★★★ (5 Bintang)</option>
+                  <option value="4">★★★★ (4 Bintang)</option>
+                  <option value="3">★★★ (3 Bintang)</option>
+                  <option value="2">★★ (2 Bintang)</option>
+                  <option value="1">★ (1 Bintang)</option>
+                </select>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>User</th>
+                      <th>Kursus</th>
+                      <th>Rating</th>
+                      <th>Komentar</th>
+                      <th>Tanggal</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="feedback-table">
+                    <tr>
+                      <td colspan="7" class="empty-state">
+                        <p>Tidak ada data feedback</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
           <!-- Settings Section -->
           <section class="dashboard-section" id="settings">
             <div style="max-width: 600px">
@@ -401,6 +471,61 @@
             total_enrollment: 24,
           },
         ],
+        feedbacks: [
+          {
+            id: 1,
+            user_id: 1,
+            user_name: "Budi Santoso",
+            course_id: 1,
+            course_title: "Web Development Bootcamp",
+            rating: 5,
+            comment:
+              "Kursus ini sangat bagus! Materi dijelaskan dengan sangat detail dan mudah dipahami.",
+            created_at: "2025-11-12",
+          },
+          {
+            id: 2,
+            user_id: 2,
+            user_name: "Siti Nurhaliza",
+            course_id: 1,
+            course_title: "Web Development Bootcamp",
+            rating: 4,
+            comment: "Bagus, tapi penjelasan video bisa diperlambat sedikit.",
+            created_at: "2025-11-11",
+          },
+          {
+            id: 3,
+            user_id: 3,
+            user_name: "Ahmad Wijaya",
+            course_id: 2,
+            course_title: "Mobile App Development",
+            rating: 5,
+            comment:
+              "Instruktur sangat responsif terhadap pertanyaan. Sangat merekomendasikan!",
+            created_at: "2025-11-10",
+          },
+          {
+            id: 4,
+            user_id: 1,
+            user_name: "Budi Santoso",
+            course_id: 2,
+            course_title: "Mobile App Development",
+            rating: 3,
+            comment: "Cukup baik, tapi ada beberapa materi yang kurang jelas.",
+            created_at: "2025-11-09",
+          },
+          {
+            id: 5,
+            user_id: 4,
+            user_name: "Rini Pratiwi",
+            course_id: 1,
+            course_title: "Web Development Bootcamp",
+            rating: 4,
+            comment:
+              "Materi lengkap dan terstruktur dengan baik. Harga sebanding dengan kualitas.",
+            created_at: "2025-11-08",
+          },
+        ],
       };
 
       // Initialize dashboard
@@ -410,6 +535,8 @@
         loadCoursesData();
         loadUsersData();
         loadEarningsData();
+        loadFeedbackData();
+        populateCourseFilter();
       }
 
       // Load Overview Data
@@ -536,6 +663,111 @@
         });
       }
 
+      // Load Feedback Data
+      function loadFeedbackData() {
+        const tbody = document.getElementById("feedback-table");
+        tbody.innerHTML = "";
+
+        if (dashboardData.feedbacks.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="7" class="empty-state"><p>Tidak ada data feedback</p></td></tr>';
+          return;
+        }
+
+        // Apply filters
+        const courseFilter =
+          document.getElementById("filter-course")?.value || "";
+        const ratingFilter =
+          document.getElementById("filter-rating")?.value || "";
+
+        let filteredFeedbacks = dashboardData.feedbacks;
+
+        if (courseFilter) {
+          filteredFeedbacks = filteredFeedbacks.filter(
+            (fb) => fb.course_id == courseFilter
+          );
+        }
+
+        if (ratingFilter) {
+          filteredFeedbacks = filteredFeedbacks.filter(
+            (fb) => fb.rating == ratingFilter
+          );
+        }
+
+        if (filteredFeedbacks.length === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="7" class="empty-state"><p>Tidak ada feedback yang sesuai dengan filter</p></td></tr>';
+          return;
+        }
+
+        filteredFeedbacks.forEach((feedback) => {
+          const stars =
+            "★".repeat(feedback.rating) + "☆".repeat(5 - feedback.rating);
+          const row = `
+                    <tr>
+                        <td>#${feedback.id}</td>
+                        <td>${feedback.user_name}</td>
+                        <td>${feedback.course_title}</td>
+                        <td><span class="rating-stars">${stars}</span> (${feedback.rating})</td>
+                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${feedback.comment}">${feedback.comment}</td>
+                        <td>${feedback.created_at}</td>
+                        <td>
+                            <button class="btn-admin btn-secondary-admin" style="padding: 6px 12px; font-size: 12px;" onclick="viewFeedback(${feedback.id})">Lihat</button>
+                            <button class="btn-admin btn-danger-admin" style="padding: 6px 12px; font-size: 12px;" onclick="deleteFeedback(${feedback.id})">Hapus</button>
+                        </td>
+                    </tr>
+                `;
+          tbody.innerHTML += row;
+        });
+      }
+
+      // Populate Course Filter
+      function populateCourseFilter() {
+        const filterSelect = document.getElementById("filter-course");
+        if (!filterSelect) return;
+
+        const courses = dashboardData.courses;
+        courses.forEach((course) => {
+          const option = document.createElement("option");
+          option.value = course.id;
+          option.textContent = course.title;
+          filterSelect.appendChild(option);
+        });
+
+        // Add event listeners for filters
+        document
+          .getElementById("filter-course")
+          ?.addEventListener("change", loadFeedbackData);
+        document
+          .getElementById("filter-rating")
+          ?.addEventListener("change", loadFeedbackData);
+      }
+
+      // View Feedback Detail
+      function viewFeedback(id) {
+        const feedback = dashboardData.feedbacks.find((fb) => fb.id === id);
+        if (feedback) {
+          alert(
+            `Feedback Detail\n\nUser: ${feedback.user_name}\nKursus: ${
+              feedback.course_title
+            }\nRating: ${"★".repeat(feedback.rating)}\n\nKomentar:\n${
+              feedback.comment
+            }`
+          );
+        }
+      }
+
+      // Delete Feedback
+      function deleteFeedback(id) {
+        if (confirm("Apakah Anda yakin ingin menghapus feedback ini?")) {
+          dashboardData.feedbacks = dashboardData.feedbacks.filter(
+            (fb) => fb.id !== id
+          );
+          loadFeedbackData();
+          alert("Feedback berhasil dihapus");
+        }
+      }
+
       // Show Section
       function showSection(sectionId, element) {
         // Hide all sections
@@ -559,6 +791,7 @@
           courses: "Kursus",
           users: "Pengguna",
           earnings: "Penghasilan",
+          feedback: "Feedback",
           settings: "Pengaturan",
         };
         document.getElementById("page-title").textContent = titles[sectionId];

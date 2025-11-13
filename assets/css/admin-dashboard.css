@@ -507,3 +507,19 @@ body.admin-body {
     display: none;
   }
 }
+
+/* Rating Stars */
+.rating-stars {
+  color: #ffd700;
+  font-size: 14px;
+  letter-spacing: 2px;
+  font-weight: bold;
+}
+
+/* Feedback Filters */
+.feedback-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
