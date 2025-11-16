@@ -18,3 +18,9 @@ export async function loginUser(data) {
     body: JSON.stringify(data),
   });
 }
+
+// LOGOUT
+export async function logoutUser() {
+  // Stateless logout - backend acknowledges; client should remove token
+  return apiFetch("/auth/logout", { method: "POST" });
+}

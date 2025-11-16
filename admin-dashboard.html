@@ -376,9 +376,44 @@
     <!-- Scripts -->
     <script src="assets/js/vendor/jquery-1.12.4.min.js"></script>
     <script src="assets/js/bootstrap.min.js"></script>
+    <script type="module">
+      // Import API functions
+      import {
+        getAdminOverview,
+        getAdminTransactions,
+        getPublishedCourses,
+        getAllUsers,
+        getAllFeedback,
+        getInstructorEarnings,
+        getProfile,
+        deleteFeedback,
+      } from "./assets/js/api/dashboard.js";
+      import { logoutUser } from "./assets/js/api/auth.js";
+
+      // Make functions global for onclick handlers
+      window.deleteFeedback = deleteFeedback;
+      window.showSection = showSection;
+      window.logout = logout;
+      window.viewFeedback = viewFeedback;
+
+      // Expose auth helpers
+      window.apiAuth = { logoutUser };
+
+      // Store API functions globally
+      window.apiDashboard = {
+        getAdminOverview,
+        getAdminTransactions,
+        getPublishedCourses,
+        getAllUsers,
+        getAllFeedback,
+        getInstructorEarnings,
+        getProfile,
+        deleteFeedback,
+      };
+    </script>
     <script>
-      // Sample data untuk dashboard
-      const dashboardData = {
+      // Sample data untuk dashboard (fallback)
+      let dashboardData = {
         overview: {
           total_users: 1250,
           total_courses: 45,
@@ -528,15 +563,76 @@
         ],
       };
 
-      // Initialize dashboard
-      function initDashboard() {
-        loadOverviewData();
-        loadTransactionsData();
-        loadCoursesData();
-        loadUsersData();
-        loadEarningsData();
-        loadFeedbackData();
-        populateCourseFilter();
+      // Initialize dashboard with API fetch
+      async function initDashboard() {
+        // Show loading state
+        const content = document.querySelector(".admin-content");
+        if (content) content.style.opacity = "0.6";
+
+        try {
+          // Fetch API data in parallel using Promise.allSettled for graceful fallback
+          const [
+            overviewResult,
+            transactionsResult,
+            coursesResult,
+            usersResult,
+            feedbackResult,
+            earningsResult,
+          ] = await Promise.allSettled([
+            window.apiDashboard.getAdminOverview(),
+            window.apiDashboard.getAdminTransactions(),
+            window.apiDashboard.getPublishedCourses(),
+            window.apiDashboard.getAllUsers(),
+            window.apiDashboard.getAllFeedback(),
+            window.apiDashboard.getInstructorEarnings(),
+          ]);
+
+          // Merge successful API responses into dashboardData
+          if (overviewResult.status === "fulfilled") {
+            dashboardData.overview = overviewResult.value;
+          }
+          if (
+            transactionsResult.status === "fulfilled" &&
+            transactionsResult.value
+          ) {
+            dashboardData.transactions = Array.isArray(transactionsResult.value)
+              ? transactionsResult.value
+              : transactionsResult.value.transactions || [];
+          }
+          if (coursesResult.status === "fulfilled" && coursesResult.value) {
+            dashboardData.courses = Array.isArray(coursesResult.value)
+              ? coursesResult.value
+              : coursesResult.value.courses || [];
+          }
+          if (usersResult.status === "fulfilled" && usersResult.value) {
+            dashboardData.users = Array.isArray(usersResult.value)
+              ? usersResult.value
+              : usersResult.value.users || [];
+          }
+          if (feedbackResult.status === "fulfilled" && feedbackResult.value) {
+            dashboardData.feedbacks = Array.isArray(feedbackResult.value)
+              ? feedbackResult.value
+              : feedbackResult.value.feedbacks || [];
+          }
+          if (earningsResult.status === "fulfilled" && earningsResult.value) {
+            dashboardData.earnings = Array.isArray(earningsResult.value)
+              ? earningsResult.value
+              : earningsResult.value.courses || [];
+          }
+        } catch (error) {
+          console.error("Error fetching dashboard data:", error);
+          console.log("Falling back to sample data");
+        } finally {
+          if (content) content.style.opacity = "1";
+          // Render all sections with data (API or sample)
+          loadOverviewData();
+          loadTransactionsData();
+          loadCoursesData();
+          loadUsersData();
+          loadEarningsData();
+          loadFeedbackData();
+          populateCourseFilter();
+        }
       }
 
       // Load Overview Data
@@ -551,27 +647,84 @@
           "Rp " + data.total_revenue.toLocaleString("id-ID");
       }
 
-      // Load Transactions Data
+      // Helpers to normalize backend or sample responses
+      function getFirst() {
+        for (let i = 0; i < arguments.length; i++) {
+          const v = arguments[i];
+          if (v !== undefined && v !== null && v !== "") return v;
+        }
+        return "";
+      }
+
+      function formatDateVal(d) {
+        if (!d) return "";
+        const dt = new Date(d);
+        if (!isNaN(dt)) return dt.toLocaleDateString("id-ID");
+        return d;
+      }
+
+      function getUserName(obj) {
+        return (
+          getFirst(obj.user, obj.user_name) ||
+          (obj.User &&
+            getFirst(
+              obj.User.full_name,
+              obj.User.FullName,
+              obj.User.fullName,
+              obj.User.name,
+              obj.User.username
+            )) ||
+          ""
+        );
+      }
+
+      function getCourseTitle(obj) {
+        return (
+          getFirst(obj.course, obj.course_title) ||
+          (obj.Course && getFirst(obj.Course.title, obj.Course.Title)) ||
+          ""
+        );
+      }
+
+      function getId(obj) {
+        return getFirst(obj.id, obj.ID) || "";
+      }
+
+      // Load Transactions Data (normalized)
       function loadTransactionsData() {
         const tbody = document.getElementById("transactions-table");
         tbody.innerHTML = "";
 
-        if (dashboardData.transactions.length === 0) {
+        const raw = dashboardData.transactions || [];
+        if (raw.length === 0) {
           tbody.innerHTML =
             '<tr><td colspan="6" class="empty-state"><p>Tidak ada data transaksi</p></td></tr>';
           return;
         }
 
-        dashboardData.transactions.forEach((tx) => {
+        const normalized = raw.map((tx) => {
+          return {
+            id: getId(tx),
+            user: getUserName(tx),
+            course: getCourseTitle(tx),
+            amount: getFirst(tx.amount, tx.Amount, 0),
+            status: getFirst(tx.status, tx.Status, "unknown"),
+            date: getFirst(tx.date, tx.created_at, tx.CreatedAt)
+              ? formatDateVal(getFirst(tx.date, tx.created_at, tx.CreatedAt))
+              : "",
+          };
+        });
+
+        normalized.forEach((tx) => {
           const row = `
                     <tr>
                         <td>#${tx.id}</td>
                         <td>${tx.user}</td>
                         <td>${tx.course}</td>
-                        <td>Rp ${tx.amount.toLocaleString("id-ID")}</td>
-                        <td><span class="status-badge status-${
-                          tx.status
-                        }">${tx.status.toUpperCase()}</span></td>
+                        <td>Rp ${Number(tx.amount).toLocaleString("id-ID")}</td>
+                        <td><span class="status-badge status-${tx.status}">${(
+            tx.status || ""
+          ).toUpperCase()}</span></td>
                         <td>${tx.date}</td>
                     </tr>
                 `;
@@ -579,30 +732,72 @@
         });
       }
 
-      // Load Courses Data
+      // Load Courses Data (normalize instructor fallback)
       function loadCoursesData() {
         const tbody = document.getElementById("courses-table");
         tbody.innerHTML = "";
 
-        if (dashboardData.courses.length === 0) {
+        const courses = dashboardData.courses || [];
+        if (courses.length === 0) {
           tbody.innerHTML =
             '<tr><td colspan="6" class="empty-state"><p>Tidak ada data kursus</p></td></tr>';
           return;
         }
 
-        dashboardData.courses.forEach((course) => {
+        courses.forEach((course) => {
+          // try multiple sources for instructor name
+          let instructor = getFirst(course.instructor, course.instructor_name);
+          if (!instructor && course.Instructor) {
+            instructor = getFirst(
+              course.Instructor.full_name,
+              course.Instructor.FullName,
+              course.Instructor.fullName,
+              course.Instructor.name
+            );
+          }
+          if (!instructor) {
+            const iid = getFirst(
+              course.instructor_id,
+              course.InstructorID,
+              course.InstructorId
+            );
+            if (iid && Array.isArray(dashboardData.users)) {
+              const u = dashboardData.users.find(
+                (x) => String(x.id) == String(iid)
+              );
+              if (u)
+                instructor = getFirst(
+                  u.fullname,
+                  u.full_name,
+                  u.fullName,
+                  u.fullName,
+                  u.username
+                );
+            }
+          }
+
           const row = `
                     <tr>
-                        <td>#${course.id}</td>
-                        <td>${course.title}</td>
-                        <td>${course.instructor}</td>
-                        <td>Rp ${course.price.toLocaleString("id-ID")}</td>
-                        <td><span class="status-badge status-${
-                          course.status
-                        }">${course.status.toUpperCase()}</span></td>
+                        <td>#${getId(course)}</td>
+                        <td>${getFirst(course.title, course.name)}</td>
+                        <td>${instructor || "-"}</td>
+                        <td>Rp ${Number(
+                          getFirst(course.price, course.Price, 0)
+                        ).toLocaleString("id-ID")}</td>
+                        <td><span class="status-badge status-${getFirst(
+                          course.status,
+                          course.published,
+                          "unknown"
+                        )}">${String(
+            getFirst(course.status, course.published, "")
+          ).toUpperCase()}</span></td>
                         <td>
-                            <button class="btn-admin btn-secondary-admin" style="padding: 6px 12px; font-size: 12px;">Edit</button>
-                            <button class="btn-admin btn-danger-admin" style="padding: 6px 12px; font-size: 12px;">Hapus</button>
+                          <button class="btn-admin btn-secondary-admin" style="padding: 6px 12px; font-size: 12px;" onclick="editUser(${getId(
+                            user
+                          )})">Edit</button>
+                          <button class="btn-admin btn-danger-admin" style="padding: 6px 12px; font-size: 12px;" onclick="deleteUserHandler(${getId(
+                            user
+                          )})">Hapus</button>
                         </td>
                     </tr>
                 `;
@@ -610,25 +805,38 @@
         });
       }
 
-      // Load Users Data
+      // Load Users Data (normalize name fields)
       function loadUsersData() {
         const tbody = document.getElementById("users-table");
         tbody.innerHTML = "";
 
-        if (dashboardData.users.length === 0) {
+        const users = dashboardData.users || [];
+        if (users.length === 0) {
           tbody.innerHTML =
             '<tr><td colspan="6" class="empty-state"><p>Tidak ada data pengguna</p></td></tr>';
           return;
         }
 
-        dashboardData.users.forEach((user) => {
+        users.forEach((user) => {
+          const name = getFirst(
+            user.fullname,
+            user.full_name,
+            user.fullName,
+            user.fullName
+          );
           const row = `
                     <tr>
-                        <td>#${user.id}</td>
-                        <td>${user.fullname}</td>
-                        <td>${user.username}</td>
-                        <td>${user.email}</td>
-                        <td><span class="status-badge" style="background: rgba(102, 126, 234, 0.1); color: #667eea;">${user.role.toUpperCase()}</span></td>
+                        <td>#${getId(user)}</td>
+                        <td>${name}</td>
+                        <td>${getFirst(
+                          user.username,
+                          user.user_name,
+                          user.username
+                        )}</td>
+                        <td>${getFirst(user.email, user.Email)}</td>
+                        <td><span class="status-badge" style="background: rgba(102, 126, 234, 0.1); color: #667eea;">${String(
+                          getFirst(user.role, user.Role, "")
+                        ).toUpperCase()}</span></td>
                         <td>
                             <button class="btn-admin btn-secondary-admin" style="padding: 6px 12px; font-size: 12px;">Edit</button>
                             <button class="btn-admin btn-danger-admin" style="padding: 6px 12px; font-size: 12px;">Hapus</button>
@@ -639,38 +847,15 @@
         });
       }
 
-      // Load Earnings Data
-      function loadEarningsData() {
-        const tbody = document.getElementById("earnings-table");
-        tbody.innerHTML = "";
-
-        if (dashboardData.earnings.length === 0) {
-          tbody.innerHTML =
-            '<tr><td colspan="4" class="empty-state"><p>Tidak ada data penghasilan</p></td></tr>';
-          return;
-        }
-
-        dashboardData.earnings.forEach((earning) => {
-          const row = `
-                    <tr>
-                        <td>#${earning.course_id}</td>
-                        <td>${earning.course_title}</td>
-                        <td>Rp ${earning.revenue.toLocaleString("id-ID")}</td>
-                        <td>${earning.total_enrollment}</td>
-                    </tr>
-                `;
-          tbody.innerHTML += row;
-        });
-      }
-
-      // Load Feedback Data
+      // Load Feedback Data (normalized from BE or sample)
       function loadFeedbackData() {
         const tbody = document.getElementById("feedback-table");
         tbody.innerHTML = "";
 
-        if (dashboardData.feedbacks.length === 0) {
+        const all = dashboardData.feedbacks || [];
+        if (all.length === 0) {
           tbody.innerHTML =
-            '<tr><td colspan="7" class="empty-state"><p>Tidak ada data feedback</p></td></tr>';
+            '<tr><td colspan="7" class="empty-state"><p>Tidak ada data feedback</p></tr>';
           return;
         }
 
@@ -680,40 +865,71 @@
         const ratingFilter =
           document.getElementById("filter-rating")?.value || "";
 
-        let filteredFeedbacks = dashboardData.feedbacks;
+        let filtered = all.slice();
 
         if (courseFilter) {
-          filteredFeedbacks = filteredFeedbacks.filter(
-            (fb) => fb.course_id == courseFilter
-          );
+          filtered = filtered.filter((fb) => {
+            const cid = getFirst(
+              fb.course_id,
+              fb.course && fb.course.id,
+              fb.Course && fb.Course.id
+            );
+            return String(cid) === String(courseFilter);
+          });
         }
 
         if (ratingFilter) {
-          filteredFeedbacks = filteredFeedbacks.filter(
-            (fb) => fb.rating == ratingFilter
+          filtered = filtered.filter(
+            (fb) =>
+              String(getFirst(fb.rating, fb.Rating)) === String(ratingFilter)
           );
         }
 
-        if (filteredFeedbacks.length === 0) {
+        if (filtered.length === 0) {
           tbody.innerHTML =
             '<tr><td colspan="7" class="empty-state"><p>Tidak ada feedback yang sesuai dengan filter</p></td></tr>';
           return;
         }
 
-        filteredFeedbacks.forEach((feedback) => {
-          const stars =
-            "★".repeat(feedback.rating) + "☆".repeat(5 - feedback.rating);
+        filtered.forEach((feedback) => {
+          const userName = getFirst(
+            feedback.user_name,
+            getUserName(feedback),
+            feedback.User &&
+              getFirst(feedback.User.full_name, feedback.User.FullName)
+          );
+          const courseTitle = getFirst(
+            feedback.course_title,
+            getCourseTitle(feedback),
+            feedback.Course &&
+              getFirst(feedback.Course.title, feedback.Course.Title)
+          );
+          const rating = Number(getFirst(feedback.rating, feedback.Rating, 0));
+          const stars = "★".repeat(rating) + "☆".repeat(5 - rating);
+
           const row = `
                     <tr>
-                        <td>#${feedback.id}</td>
-                        <td>${feedback.user_name}</td>
-                        <td>${feedback.course_title}</td>
-                        <td><span class="rating-stars">${stars}</span> (${feedback.rating})</td>
-                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${feedback.comment}">${feedback.comment}</td>
-                        <td>${feedback.created_at}</td>
+                        <td>#${getId(feedback)}</td>
+                        <td>${userName}</td>
+                        <td>${courseTitle}</td>
+                        <td><span class="rating-stars">${stars}</span> (${rating})</td>
+                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${
+                          feedback.comment || ""
+                        }">${feedback.comment || ""}</td>
+                        <td>${formatDateVal(
+                          getFirst(
+                            feedback.created_at,
+                            feedback.createdAt,
+                            feedback.CreatedAt
+                          )
+                        )}</td>
                         <td>
-                            <button class="btn-admin btn-secondary-admin" style="padding: 6px 12px; font-size: 12px;" onclick="viewFeedback(${feedback.id})">Lihat</button>
-                            <button class="btn-admin btn-danger-admin" style="padding: 6px 12px; font-size: 12px;" onclick="deleteFeedback(${feedback.id})">Hapus</button>
+                            <button class="btn-admin btn-secondary-admin" style="padding: 6px 12px; font-size: 12px;" onclick="viewFeedback(${getId(
+                              feedback
+                            )})">Lihat</button>
+                            <button class="btn-admin btn-danger-admin" style="padding: 6px 12px; font-size: 12px;" onclick="deleteFeedback(${getId(
+                              feedback
+                            )})">Hapus</button>
                         </td>
                     </tr>
                 `;
@@ -757,16 +973,113 @@
         }
       }
 
-      // Delete Feedback
-      function deleteFeedback(id) {
-        if (confirm("Apakah Anda yakin ingin menghapus feedback ini?")) {
+      // Delete Feedback - now calls API with fallback
+      async function deleteFeedbackHandler(id) {
+        if (!confirm("Apakah Anda yakin ingin menghapus feedback ini?")) {
+          return;
+        }
+
+        try {
+          // Try to delete via API
+          await window.apiDashboard.deleteFeedback(id);
+          alert("Feedback berhasil dihapus");
+        } catch (error) {
+          console.warn("API delete failed, using local fallback:", error);
+          alert("Feedback berhasil dihapus (lokal)");
+        } finally {
+          // Remove from local data
           dashboardData.feedbacks = dashboardData.feedbacks.filter(
             (fb) => fb.id !== id
           );
           loadFeedbackData();
-          alert("Feedback berhasil dihapus");
         }
       }
+
+      // Keep original deleteFeedback for backward compatibility
+      window.deleteFeedback = deleteFeedbackHandler;
+
+      // Edit User - opens prompts and updates via API with fallback
+      async function editUser(id) {
+        try {
+          const resp = await window.apiDashboard.getUserById(id);
+          const user = resp.user || resp || {};
+
+          const fullName = prompt(
+            "Nama lengkap:",
+            user.full_name ||
+              user.fullName ||
+              user.FullName ||
+              user.fullname ||
+              ""
+          );
+          if (fullName === null) return; // cancelled
+          const username = prompt(
+            "Username:",
+            user.username || user.user_name || ""
+          );
+          if (username === null) return;
+          const email = prompt("Email:", user.email || user.Email || "");
+          if (email === null) return;
+          const role = prompt(
+            "Role (user/instructor/admin):",
+            user.role || user.Role || "user"
+          );
+          if (role === null) return;
+
+          const payload = {
+            full_name: fullName,
+            username: username,
+            email: email,
+            role: role,
+          };
+
+          await window.apiDashboard.updateUser(id, payload);
+          alert("User berhasil diperbarui");
+
+          // Refresh users list from API if available
+          try {
+            const usersResp = await window.apiDashboard.getAllUsers();
+            dashboardData.users =
+              usersResp.users || usersResp || dashboardData.users;
+          } catch (err) {
+            // fallback: update local copy
+            dashboardData.users = (dashboardData.users || []).map((u) =>
+              String(getId(u)) === String(id)
+                ? Object.assign({}, u, payload)
+                : u
+            );
+          }
+
+          loadUsersData();
+        } catch (err) {
+          console.error("Failed to edit user:", err);
+          alert("Gagal memperbarui user (cek console untuk detail)");
+        }
+      }
+
+      // Delete user with API fallback
+      async function deleteUserHandler(id) {
+        if (!confirm("Apakah Anda yakin ingin menghapus user ini?")) return;
+        try {
+          await window.apiDashboard.deleteUser(id);
+          alert("User berhasil dihapus");
+        } catch (err) {
+          console.warn(
+            "API delete user failed, falling back to local removal",
+            err
+          );
+          alert("User dihapus secara lokal (API gagal)");
+        } finally {
+          dashboardData.users = (dashboardData.users || []).filter(
+            (u) => String(getId(u)) !== String(id)
+          );
+          loadUsersData();
+        }
+      }
+
+      // Expose user handlers globally for onclick
+      window.editUser = editUser;
+      window.deleteUserHandler = deleteUserHandler;
 
       // Show Section
       function showSection(sectionId, element) {
@@ -797,11 +1110,28 @@
         document.getElementById("page-title").textContent = titles[sectionId];
       }
 
-      // Logout
-      function logout() {
-        if (confirm("Apakah Anda yakin ingin keluar?")) {
-          // akan diintegrasikan dengan backend
-          console.log("Logout");
+      // Logout - call backend and clear token
+      async function logout() {
+        if (!confirm("Apakah Anda yakin ingin keluar?")) return;
+        try {
+          // Call backend logout (stateless acknowledgement)
+          if (
+            window.apiAuth &&
+            typeof window.apiAuth.logoutUser === "function"
+          ) {
+            await window.apiAuth.logoutUser();
+          }
+        } catch (err) {
+          console.warn(
+            "Logout API failed, proceeding to clear local session",
+            err
+          );
+        } finally {
+          // Clear token and redirect to login
+          try {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+          } catch (e) {}
           window.location.href = "index.html";
         }
       }
