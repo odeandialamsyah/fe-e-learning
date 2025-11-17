@@ -17,6 +17,21 @@
   </head>
 
   <body class="admin-body">
+    <script>
+      // Role guard: only instructor can access this page
+      (function () {
+        try {
+          const user = JSON.parse(localStorage.getItem("user") || "null");
+          if (!user || user.role !== "instructor") {
+            alert("Akses ditolak: Halaman ini hanya untuk instructor");
+            window.location.href = "index.html";
+          }
+        } catch (e) {
+          console.warn("Role guard parse error", e);
+          window.location.href = "index.html";
+        }
+      })();
+    </script>
     <div class="admin-container">
       <!-- Sidebar -->
       <aside class="admin-sidebar">

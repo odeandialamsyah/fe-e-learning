@@ -27,7 +27,7 @@
             style="color: #667eea; font-size: 18px"
           ></span>
         </h2>
-        <button class="btn-add" onclick="openAddModuleModal()">
+        <button class="btn-add" onclick="goToAddModule()">
           <i class="fa fa-plus"></i> Tambah Module
         </button>
       </div>
@@ -45,64 +45,16 @@
       </div>
     </div>
 
-    <!-- Add/Edit Module Modal -->
-    <div id="module-modal" class="modal-backdrop">
-      <div class="modal">
-        <h3 id="modal-title">Tambah Module</h3>
-        <form id="module-form">
-          <div class="form-group">
-            <label for="module-title">Judul Module *</label>
-            <input
-              type="text"
-              id="module-title"
-              required
-              placeholder="Contoh: Pengenalan HTML"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="module-order">Urutan *</label>
-            <input
-              type="number"
-              id="module-order"
-              required
-              placeholder="1"
-              min="1"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="module-pdf">File PDF (Opsional)</label>
-            <input type="file" id="module-pdf" accept=".pdf" />
-            <small style="color: #666; display: block; margin-top: 5px"
-              >Ukuran maksimal: 10MB</small
-            >
-          </div>
-
-          <div class="modal-actions">
-            <button
-              type="button"
-              class="btn-modal btn-modal-secondary"
-              onclick="closeAddModuleModal()"
-            >
-              Batal
-            </button>
-            <button type="submit" class="btn-modal btn-modal-primary">
-              Simpan Module
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
     <!-- Scripts -->
     <script src="assets/js/vendor/jquery-1.12.4.min.js"></script>
     <script type="module">
-      import { addModule } from "./assets/js/api/instructor.js";
+      import {
+        getCoursDetail,
+        deleteModule,
+      } from "./assets/js/api/instructor.js";
 
       let courseId = null;
       let modules = [];
-      let editingModuleId = null;
 
       // Get course ID from URL params
       function getCourseIdFromUrl() {
@@ -121,16 +73,17 @@
           "course-title"
         ).textContent = `(Kursus #${courseId})`;
 
-        // For now, load from localStorage or sample data
-        // In production, fetch from API
         try {
-          // TODO: Implement GET /instructor/courses/:id/modules endpoint
-          modules = JSON.parse(
-            localStorage.getItem(`course-${courseId}-modules`) || "[]"
-          );
+          // Fetch course detail which includes modules
+          const courseData = await getCoursDetail(courseId);
+          modules = courseData.modules || [];
           renderModules();
         } catch (err) {
           console.error("Error loading modules:", err);
+          // Fallback to localStorage for offline support
+          modules = JSON.parse(
+            localStorage.getItem(`course-${courseId}-modules`) || "[]"
+          );
           renderModules();
         }
       }
@@ -176,39 +129,46 @@
           .join("");
       }
 
-      window.openAddModuleModal = function () {
-        editingModuleId = null;
-        document.getElementById("modal-title").textContent = "Tambah Module";
-        document.getElementById("module-form").reset();
-        document.getElementById("module-modal").classList.add("active");
-      };
-
-      window.closeAddModuleModal = function () {
-        document.getElementById("module-modal").classList.remove("active");
+      window.goToAddModule = function () {
+        const courseId = getCourseIdFromUrl();
+        if (!courseId) {
+          showAlert("Course ID tidak ditemukan", "error");
+          return;
+        }
+        window.location.href = `module-form.html?courseId=${courseId}`;
       };
 
       window.editModule = function (id) {
-        const module = modules.find((m) => m.id === id);
-        if (!module) {
-          alert("Module tidak ditemukan");
+        const courseId = getCourseIdFromUrl();
+        if (!courseId) {
+          showAlert("Course ID tidak ditemukan", "error");
           return;
         }
-        editingModuleId = id;
-        document.getElementById("modal-title").textContent = "Edit Module";
-        document.getElementById("module-title").value = module.title;
-        document.getElementById("module-order").value = module.order || 1;
-        document.getElementById("module-modal").classList.add("active");
+        window.location.href = `module-form.html?courseId=${courseId}&moduleId=${id}`;
       };
 
       window.deleteModule = async function (id) {
         if (!confirm("Apakah Anda yakin ingin menghapus module ini?")) return;
-        modules = modules.filter((m) => m.id !== id);
-        localStorage.setItem(
-          `course-${courseId}-modules`,
-          JSON.stringify(modules)
-        );
-        renderModules();
-        showAlert("Module berhasil dihapus", "success");
+
+        try {
+          // Call API to delete module
+          await deleteModule(courseId, id);
+
+          // Remove from local modules list
+          modules = modules.filter((m) => m.id !== id);
+
+          // Update localStorage as backup
+          localStorage.setItem(
+            `course-${courseId}-modules`,
+            JSON.stringify(modules)
+          );
+
+          renderModules();
+          showAlert("Module berhasil dihapus", "success");
+        } catch (error) {
+          console.error("Error deleting module:", error);
+          showAlert("Gagal menghapus module: " + error.message, "error");
+        }
       };
 
       window.goToQuizzes = function (moduleId) {
@@ -218,63 +178,6 @@
         }
         window.location.href = `course-quiz.html?courseId=${courseId}&moduleId=${moduleId}`;
       };
-
-      document
-        .getElementById("module-form")
-        .addEventListener("submit", async function (e) {
-          e.preventDefault();
-
-          const title = document.getElementById("module-title").value.trim();
-          const order = parseInt(document.getElementById("module-order").value);
-          const pdfFile = document.getElementById("module-pdf").files[0];
-
-          if (!title || !order) {
-            showAlert("Judul dan urutan harus diisi", "error");
-            return;
-          }
-
-          try {
-            // If editing, update; otherwise add new
-            if (editingModuleId) {
-              const moduleIdx = modules.findIndex(
-                (m) => m.id === editingModuleId
-              );
-              if (moduleIdx !== -1) {
-                modules[moduleIdx].title = title;
-                modules[moduleIdx].order = order;
-                if (pdfFile) {
-                  // In real app, upload to server
-                  modules[moduleIdx].pdf_url = `uploaded/${pdfFile.name}`;
-                }
-              }
-            } else {
-              const newModule = {
-                id: Date.now(),
-                title,
-                order,
-                pdf_url: pdfFile ? `uploaded/${pdfFile.name}` : null,
-                course_id: courseId,
-              };
-              modules.push(newModule);
-            }
-
-            localStorage.setItem(
-              `course-${courseId}-modules`,
-              JSON.stringify(modules)
-            );
-            renderModules();
-            closeAddModuleModal();
-            showAlert(
-              editingModuleId
-                ? "Module berhasil diperbarui"
-                : "Module berhasil ditambahkan",
-              "success"
-            );
-          } catch (error) {
-            console.error("Error:", error);
-            showAlert("Gagal menyimpan module: " + error.message, "error");
-          }
-        });
 
       function showAlert(message, type) {
         const errorAlert = document.getElementById("alert-error");
@@ -291,7 +194,15 @@
         }
       }
 
+      // Reload modules when page becomes visible (user returns from module-form page)
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          loadModules();
+        }
+      });
+
       document.addEventListener("DOMContentLoaded", loadModules);
+    </script>
     </script>
   </body>
 </html>

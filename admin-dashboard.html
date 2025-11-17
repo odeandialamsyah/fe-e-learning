@@ -17,6 +17,36 @@
   </head>
 
   <body class="admin-body">
+    <script>
+      // Role guard: only admin can access this page
+      (function () {
+        try {
+          const user = JSON.parse(localStorage.getItem("user") || "null");
+          if (!user || user.role !== "admin") {
+            alert("Akses ditolak: Halaman ini hanya untuk admin");
+            window.location.href = "index.html";
+          }
+        } catch (e) {
+          console.warn("Role guard parse error", e);
+          window.location.href = "index.html";
+        }
+      })();
+    </script>
+    <script>
+      // Role guard: only admin can access this page
+      (function () {
+        try {
+          const user = JSON.parse(localStorage.getItem('user') || 'null');
+          if (!user || user.role !== 'admin') {
+            alert('Akses ditolak: Halaman ini hanya untuk admin');
+            window.location.href = 'not-found.html';
+          }
+        } catch (e) {
+          console.warn('Role guard parse error', e);
+          window.location.href = 'not-found.html';
+        }
+      })();
+    </script>
     <div class="admin-container">
       <!-- Sidebar -->
       <aside class="admin-sidebar">
